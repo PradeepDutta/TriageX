@@ -1,26 +1,12 @@
 import { NextResponse } from 'next/server';
-import { addPatientIntake } from '@/lib/triage-store';
-
-const SAMPLE_NAMES = [
-  { name: 'Kavita Sundaram', age: 48, gender: 'Female', lang: 'ta', text: 'கடுமையான ஆஸ்துமா மூச்சுத் திணறல் (Severe asthmatic dyspnea, unable to complete sentence)' },
-  { name: 'Vijay Shekhawat', age: 29, gender: 'Male', lang: 'hi', text: 'बाइक से गिर गए, घुटने और सिर में कट गया है। (Bike accident, deep laceration on scalp and knee)' },
-  { name: 'Priya Mukherjee', age: 34, gender: 'Female', lang: 'bn', text: 'প্রবল জ্বর এবং পেটে প্রচণ্ড ব্যথা। (Severe fever 102F and right lower quadrant abdominal pain)' },
-  { name: 'Srinivas Rao', age: 58, gender: 'Male', lang: 'te', text: 'అధిక రక్తపోటు మరియు కళ్ళు తిరగడం. (Hypertension emergency, extreme giddiness)' },
-  { name: 'Deepak Thorat', age: 40, gender: 'Male', lang: 'mr', text: 'हाताला गरम तेलाचा भाजला आहे. (Second degree scald burn on left hand)' },
-];
-
-const FACILITIES = [
-  'PHC Rampur',
-  'Camp Baramati - Rural Health Unit',
-  'Jamshedpur Industrial Health Center',
-  'District Hospital Pune',
-  'IIT Campus Health Center'
-];
+import { addPatientIntake, getPatientQueue } from '@/lib/triage-store';
+import { createSimulationProfile, isSimulatedPatient } from '@/lib/triage-simulation';
 
 export async function POST() {
   try {
-    const randomSample = SAMPLE_NAMES[Math.floor(Math.random() * SAMPLE_NAMES.length)];
-    const randomFacility = FACILITIES[Math.floor(Math.random() * FACILITIES.length)];
+    const patients = getPatientQueue();
+    const simulationCount = patients.filter(isSimulatedPatient).length;
+    const profile = createSimulationProfile(patients, simulationCount);
 
     const simulatedVitals = {
       pulse: Math.floor(70 + Math.random() * 60),
@@ -32,13 +18,8 @@ export async function POST() {
     };
 
     const newPatient = addPatientIntake({
-      patientName: randomSample.name,
-      age: randomSample.age,
-      gender: randomSample.gender,
-      facilityName: randomFacility,
-      facilityType: randomFacility.includes('PHC') ? 'Primary Health Center (PHC)' : (randomFacility.includes('Camp') ? 'Public Health Camp' : 'District Hospital'),
-      language: randomSample.lang,
-      symptomText: randomSample.text,
+      ...profile,
+      isSimulated: true,
       vitals: simulatedVitals,
       imageInput: Math.random() > 0.5 ? { fileName: 'simulated_trauma_photo.jpg', description: 'Cutaneous trauma / laceration photo' } : null,
       reportText: Math.random() > 0.6 ? 'Lab Test: WBC = 16,500 /uL (Elevated Infection Markers).' : ''

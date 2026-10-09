@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export default function CyberHeart3D() {
   const canvasRef = useRef(null);
+  const [showBackground, setShowBackground] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -27,21 +28,21 @@ export default function CyberHeart3D() {
       // Outer cyan ring
       ctx.beginPath();
       ctx.arc(0, 0, 140, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0, 240, 255, 0.35)';
+      ctx.strokeStyle = 'rgba(96, 165, 250, 0.28)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
       // Middle red tick ring
       ctx.beginPath();
       ctx.arc(0, 0, 110, 0, Math.PI * 1.5);
-      ctx.strokeStyle = 'rgba(255, 41, 72, 0.6)';
+      ctx.strokeStyle = 'rgba(232, 32, 58, 0.5)';
       ctx.lineWidth = 2;
       ctx.stroke();
 
       // Inner ring
       ctx.beginPath();
       ctx.arc(0, 0, 60, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
+      ctx.strokeStyle = 'rgba(96, 165, 250, 0.32)';
       ctx.lineWidth = 1;
       ctx.stroke();
 
@@ -56,8 +57,8 @@ export default function CyberHeart3D() {
         heartCenterY,
         300
       );
-      radialGlow.addColorStop(0, 'rgba(0, 240, 255, 0.08)');
-      radialGlow.addColorStop(0.6, 'rgba(0, 240, 255, 0.02)');
+      radialGlow.addColorStop(0, 'rgba(96, 165, 250, 0.06)');
+      radialGlow.addColorStop(0.6, 'rgba(96, 165, 250, 0.015)');
       radialGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
       ctx.fillStyle = radialGlow;
@@ -71,7 +72,7 @@ export default function CyberHeart3D() {
         const px = (i * 137.5) % width;
         const py = (i * 219.3) % height;
         const size = (i % 3) * 0.5 + 1.0;
-        const color = i % 2 === 0 ? '#ff2948' : '#00f0ff';
+        const color = i % 2 === 0 ? '#e8203a' : '#60a5fa';
         const opacity = ((i % 5) + 3) / 10;
 
         ctx.beginPath();
@@ -94,8 +95,8 @@ export default function CyberHeart3D() {
       const aortaY = heartCenterY - (isMobile ? 90 : 140);
       const aortaArmX = Math.min(aortaX + (isMobile ? 80 : 160), width - 15);
 
-      ctx.strokeStyle = 'rgba(255, 41, 72, 0.8)';
-      ctx.fillStyle = 'rgba(255, 41, 72, 0.9)';
+      ctx.strokeStyle = 'rgba(232, 32, 58, 0.75)';
+      ctx.fillStyle = 'rgba(232, 32, 58, 0.85)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(aortaX, aortaY, 4, 0, Math.PI * 2);
@@ -107,7 +108,7 @@ export default function CyberHeart3D() {
       ctx.lineTo(aortaArmX, aortaY - (isMobile ? 25 : 40));
       ctx.stroke();
 
-      ctx.fillStyle = '#ff4d6d';
+      ctx.fillStyle = '#f04457';
       ctx.font = isMobile ? 'bold 10px monospace' : 'bold 12px monospace';
       ctx.fillText('AORTA (O₂ RICH)', aortaX + (isMobile ? 22 : 45), aortaY - (isMobile ? 30 : 46));
       ctx.fillStyle = '#94a3b8';
@@ -123,8 +124,8 @@ export default function CyberHeart3D() {
       const venaY = heartCenterY - (isMobile ? 25 : 40);
       const venaArmX = Math.max(venaX - (isMobile ? 70 : 160), 15);
 
-      ctx.strokeStyle = 'rgba(0, 240, 255, 0.8)';
-      ctx.fillStyle = 'rgba(0, 240, 255, 0.9)';
+      ctx.strokeStyle = 'rgba(96, 165, 250, 0.75)';
+      ctx.fillStyle = 'rgba(96, 165, 250, 0.85)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(venaX, venaY, 4, 0, Math.PI * 2);
@@ -136,7 +137,7 @@ export default function CyberHeart3D() {
       ctx.lineTo(venaArmX, venaY - (isMobile ? 20 : 30));
       ctx.stroke();
 
-      ctx.fillStyle = '#00f0ff';
+      ctx.fillStyle = '#60a5fa';
       ctx.font = isMobile ? 'bold 10px monospace' : 'bold 12px monospace';
       ctx.fillText('VENA CAVA (DE-O₂)', venaArmX, venaY - (isMobile ? 25 : 36));
       ctx.fillStyle = '#94a3b8';
@@ -153,7 +154,7 @@ export default function CyberHeart3D() {
       ctx.save();
       const ecgY = height - 90;
       ctx.beginPath();
-      ctx.strokeStyle = 'rgba(0, 240, 255, 0.5)';
+      ctx.strokeStyle = 'rgba(96, 165, 250, 0.42)';
       ctx.lineWidth = 1.5;
 
       const segments = Math.floor(width / 180);
@@ -182,8 +183,22 @@ export default function CyberHeart3D() {
     };
   }, []);
 
+  useEffect(() => {
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const updateBackground = () => {
+      const reducedData = window.matchMedia?.('(prefers-reduced-data: reduce)').matches === true;
+      const slowConnection = ['slow-2g', '2g'].includes(connection?.effectiveType);
+      setShowBackground(!connection?.saveData && !slowConnection && !reducedData);
+    };
+
+    updateBackground();
+    connection?.addEventListener?.('change', updateBackground);
+    return () => connection?.removeEventListener?.('change', updateBackground);
+  }, []);
+
   return (
     <div
+      aria-hidden="true"
       style={{
         position: 'absolute',
         inset: 0,
@@ -200,7 +215,7 @@ export default function CyberHeart3D() {
         style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: 'url(/cyber_heart_bg.jpg)',
+          backgroundImage: showBackground ? 'url(/cyber_heart_bg.jpg)' : 'none',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           transform: 'none',

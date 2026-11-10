@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { translateUsingClinicalDictionary } from '@/lib/translation-dictionary';
+import { requireRole } from '@/lib/supabase/server';
 
 const GOOGLE_TRANSLATE_URL = 'https://translation.googleapis.com/language/translate/v2';
 const SOURCE_LANGUAGE_ALIASES = { od: 'or' };
 
 export async function POST(request) {
+  const access = await requireRole(['patient', 'clinician', 'admin']);
+  if (access.response) return access.response;
+
   let body;
   try {
     body = await request.json();

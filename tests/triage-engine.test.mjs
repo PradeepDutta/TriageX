@@ -27,9 +27,7 @@ test('Triage Engine: TRG-1861 resolution — emergency override separated from n
   assert.equal(result.isEmergencyOverride, true, 'Emergency override flag must be true');
   assert.ok(result.emergencyOverrideReason.includes('chest pain'), 'Override reason must cite chest pain red flag');
   assert.equal(result.colorTheme, '#e8203a', 'Canonical Level 1 Red hex color');
-  assert.ok(result.aiConfidence.includes('%'), 'Confidence must be percentage string');
-  const confNum = parseInt(result.aiConfidence, 10);
-  assert.ok(confNum >= 70 && confNum <= 100, 'Confidence number must be bounded between 70 and 100%');
+  assert.equal('aiConfidence' in result, false, 'Unvalidated demo rules must not claim model confidence');
   assert.ok(result.structuredNote.assessment.includes('ACUTE CORONARY') || result.structuredNote.assessment.includes('EMERGENCY'));
 });
 
@@ -76,8 +74,18 @@ test('Triage Engine: Boundary and invalid vitals handling', () => {
   // Must not throw or produce NaN
   assert.ok(!isNaN(result.priorityScore), 'Priority score must be a valid number');
   assert.ok(!isNaN(result.numericalScore), 'Numerical score must be a valid number');
-  assert.ok(typeof result.aiConfidence === 'string' && result.aiConfidence.includes('%'), 'Confidence must be valid percentage');
+  assert.equal('aiConfidence' in result, false, 'Unvalidated demo rules must not claim model confidence');
   assert.ok(result.numericalScore >= 0, 'Score should safely default without crashing');
+});
+
+test('Triage Engine: image metadata is not represented as a visual finding', () => {
+  const result = processTriage({
+    symptomText: '',
+    imageInput: { fileName: 'sample.jpg', tag: 'burn', description: 'severe facial burn' },
+  });
+
+  assert.equal(result.redFlagCount, 0);
+  assert.ok(result.structuredNote.multimodalInsights.visual.includes('not visually analyzed'));
 });
 
 test('Triage Engine: Routine complaint classification (BLUE / Level 4)', () => {

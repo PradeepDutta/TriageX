@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { addPatientIntake } from '@/lib/triage-store';
+import { createTriageAssessmentRow, insertTriageAssessment } from '@/lib/triage-assessments';
+import { getAuthenticatedContext, requireTriageAssessmentAccess } from '@/lib/supabase/server';
 
 function sanitizeString(str, maxLength = 500) {
   if (typeof str !== 'string') return '';
@@ -7,6 +8,17 @@ function sanitizeString(str, maxLength = 500) {
 }
 
 export async function POST(request) {
+  const access = await getAuthenticatedContext();
+  if (!access.configured) {
+    return NextResponse.json({ error: 'Authentication is not configured.' }, { status: 503 });
+  }
+  if (access.error) {
+    return NextResponse.json({ error: 'Unable to verify account access.' }, { status: 503 });
+  }
+  if (!access.user) {
+    return NextResponse.json({ error: 'Sign in is required.' }, { status: 401 });
+  }
+
   try {
     let body;
     try {
@@ -15,8 +27,58 @@ export async function POST(request) {
       return NextResponse.json({ error: 'A valid JSON request payload is required.' }, { status: 400 });
     }
 
-    if (!body || typeof body !== 'object') {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
+    }
+
+    const hasHospitalId = body.hospitalId !== undefined && body.hospitalId !== null && body.hospitalId !== '';
+    const hasDepartmentId = body.departmentId !== undefined && body.departmentId !== null && body.departmentId !== '';
+    if (hasHospitalId !== hasDepartmentId) {
+      return NextResponse.json(
+        { error: 'Both an authorized hospital and department assignment are required for a clinical queue case.' },
+        { status: 400 }
+      );
+    }
+    if (!hasHospitalId && access.role !== 'patient') {
+      return NextResponse.json(
+        { error: 'A clinician account must select an authorized hospital and department.' },
+        { status: 403 }
+      );
+    }
+
+    let hospital = null;
+    let departmentId = null;
+    let ownerUserId = access.user.id;
+    if (hasHospitalId) {
+      const tenantAccess = await requireTriageAssessmentAccess(
+        body.hospitalId,
+        body.departmentId,
+        { create: true, context: access }
+      );
+      if (tenantAccess.response) return tenantAccess.response;
+
+      const { data: authorizedHospital, error: hospitalError } = await access.supabase
+        .from('hospitals')
+        .select('id, name')
+        .eq('id', body.hospitalId)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (hospitalError) {
+        console.error('Unable to verify triage hospital details:', {
+          code: hospitalError.code || null,
+          status: hospitalError.status || null,
+          message: hospitalError.message || 'No error message was provided.',
+        });
+        return NextResponse.json({ error: 'Unable to verify the selected hospital.' }, { status: 503 });
+      }
+      if (!authorizedHospital) {
+        return NextResponse.json({ error: 'The selected hospital is unavailable to this account.' }, { status: 403 });
+      }
+
+      hospital = authorizedHospital;
+      departmentId = body.departmentId;
+      ownerUserId = null;
     }
 
     // 1. Demographics Validation
@@ -33,8 +95,6 @@ export async function POST(request) {
     const validGenders = ['Male', 'Female', 'Other', 'Unspecified'];
     const gender = validGenders.includes(body.gender) ? body.gender : 'Unspecified';
     const contact = sanitizeString(body.contact, 30);
-    const facilityName = sanitizeString(body.facilityName || 'Primary Health Center (PHC)', 100);
-    const facilityType = sanitizeString(body.facilityType || 'Primary Health Center (PHC)', 100);
     const language = sanitizeString(body.language || 'en', 10);
 
     // 2. Multimodal Inputs Validation
@@ -122,21 +182,43 @@ export async function POST(request) {
       );
     }
 
-    const patientRecord = addPatientIntake({
+    const assessment = createTriageAssessmentRow({
+      actorUserId: access.user.id,
+      ownerUserId,
+      hospital,
+      departmentId,
+      isSimulated: false,
+      intakeData: {
       patientName,
       age: Math.round(ageNum),
       gender,
       contact,
-      facilityName,
-      facilityType,
       language,
       symptomText,
       voiceTranscripts,
       vitals: sanitizedVitals,
       imageInput,
       reportText,
-      isSimulated: Boolean(body.isSimulated),
+      },
     });
+
+    const { data: patientRecord, error: insertError } = await insertTriageAssessment(
+      access.supabase,
+      assessment
+    );
+    if (insertError) {
+      console.error('Unable to persist triage assessment:', {
+        code: insertError.code || null,
+        status: insertError.status || null,
+        message: insertError.message || 'No error message was provided.',
+      });
+      return NextResponse.json(
+        { error: insertError.code === '42501'
+          ? 'This account cannot create an assessment for the selected assignment.'
+          : 'Unable to save the triage assessment. Please try again later.' },
+        { status: insertError.code === '42501' ? 403 : 503 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
@@ -145,9 +227,7 @@ export async function POST(request) {
     }, { status: 201 });
 
   } catch (err) {
-    // Log safe error without exposing sensitive patient details
     console.error('Server error processing triage intake:', err?.message || err);
-    return NextResponse.json({ error: 'Internal Server Error processing triage intake.' }, { status: 500 });
+    return NextResponse.json({ error: 'Unable to process the triage assessment.' }, { status: 500 });
   }
 }
-

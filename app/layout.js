@@ -1,18 +1,18 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "TriageX — AI-Assisted Multilingual Patient Triage",
+  title: "TriageX — Smart Triage. Better Care.",
   description:
-    "TriageX combines patient symptoms, vital signs, multilingual voice interaction, and explainable AI-assisted assessment to help healthcare teams prioritize patients efficiently.",
+    "TriageX helps people assess symptoms, prioritize care, and connect with the right healthcare service through a clinician-reviewed triage workflow.",
   keywords:
     "AI triage, healthcare AI, multilingual triage, patient assessment, clinical decision support, TriageX",
   icons: {
-    icon: "/icon.png",
-    shortcut: "/icon.png",
-    apple: "/icon.png",
+    icon: "/triagex-logo.png",
+    shortcut: "/triagex-logo.png",
+    apple: "/triagex-logo.png",
   },
   openGraph: {
-    title: "TriageX — Smarter Triage. Faster Decisions. Better Care.",
+    title: "TriageX — Smart Triage. Better Care.",
     description:
       "AI-assisted multilingual patient triage platform combining symptoms, vital signs, voice interaction, and explainable clinical decision support.",
     type: "website",
@@ -21,19 +21,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="en" data-scroll-behavior="smooth">
       <body>{children}</body>
     </html>
   );

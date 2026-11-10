@@ -1,246 +1,272 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { Home, Stethoscope, UserPlus, BarChart3, AlertCircle, ShieldAlert, Menu, X, Activity } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import {
+  Activity,
+  AlertCircle,
+  BarChart3,
+  Building2,
+  ClipboardCheck,
+  HeartPulse,
+  Home,
+  Menu,
+  Moon,
+  Sun,
+  Stethoscope,
+  X,
+  UserRound,
+} from 'lucide-react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { applyPreferencesToDocument } from '@/lib/appearance';
+import { DEFAULT_PREFERENCES } from '@/lib/account-preferences';
+
+const navigation = [
+  { href: '/', label: 'Home', icon: Home },
+  { href: '/patient-dashboard', label: 'My Health', icon: HeartPulse },
+  { href: '/intake', label: 'Triage', icon: Activity },
+  { href: '/services', label: 'Services', icon: Building2 },
+  { href: '/health-info', label: 'Health Info', icon: HeartIcon },
+  { href: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/about', label: 'About', icon: Stethoscope },
+  { href: '/contact', label: 'Contact', icon: AlertCircle },
+];
+
+function HeartIcon({ size = 16 }) {
+  return <Activity size={size} />;
+}
+
+function subscribeToTheme(callback) {
+  window.addEventListener('triagex-theme-change', callback);
+  return () => window.removeEventListener('triagex-theme-change', callback);
+}
+
+function getThemeSnapshot() {
+  return document.documentElement.dataset.theme === 'dark';
+}
 
 export default function Navbar() {
   const pathname = usePathname();
   const [stats, setStats] = useState(null);
+  const [account, setAccount] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
+  const isDark = useSyncExternalStore(subscribeToTheme, getThemeSnapshot, () => false);
 
   useEffect(() => {
-    fetch('/api/triage/stats')
-      .then(res => res.json())
-      .then(res => {
-        if (res.success) setStats(res.data);
+    fetch('/api/triage/hospitals')
+      .then((response) => response.json())
+      .then((result) => {
+        const hospital = result.data?.find((item) => (
+          item.departments?.some((candidate) => candidate.canAccess)
+        ));
+        const department = hospital?.departments?.find((candidate) => candidate.canAccess);
+        if (!result.success || !hospital || !department) return null;
+        const params = new URLSearchParams({
+          hospitalId: hospital.id,
+          departmentId: department.id,
+        });
+        return fetch(`/api/triage/stats?${params}`)
+          .then((response) => response.json())
+          .then((statsResult) => {
+            if (statsResult.success) setStats(statsResult.data);
+            return null;
+          });
       })
-      .catch(err => console.error(err));
+      .catch((error) => console.error('Unable to load triage navigation status:', error));
+
+    fetch('/api/auth/me')
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to verify your account.');
+        setAccount(result.user || null);
+      })
+      .catch((error) => {
+        setAccount(null);
+        console.error('Unable to load the navigation account status:', error);
+      });
   }, [pathname]);
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 10);
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    let active = true;
+    let storedTheme = null;
+    try {
+      storedTheme = window.localStorage.getItem('triagex-theme');
+    } catch (error) {
+      console.error('Unable to read the saved TriageX theme preference:', error);
+    }
+    const localPreferences = {
+      ...DEFAULT_PREFERENCES,
+      appearance: ['light', 'dark', 'system'].includes(storedTheme) ? storedTheme : 'system',
+    };
+    applyPreferencesToDocument(localPreferences);
+
+    fetch('/api/account/preferences')
+      .then(async (response) => {
+        if (response.status === 401 || response.status === 503) return null;
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to load preferences.');
+        return result.preferences;
+      })
+      .then((preferences) => {
+        if (active && preferences) applyPreferencesToDocument(preferences);
+      })
+      .catch((error) => console.error('Unable to load saved appearance preferences:', error));
+
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const updateSystemTheme = () => {
+      if (document.documentElement.dataset.appearance === 'system') {
+        document.documentElement.dataset.theme = systemTheme.matches ? 'dark' : 'light';
+        window.dispatchEvent(new Event('triagex-theme-change'));
+      }
+    };
+    systemTheme.addEventListener?.('change', updateSystemTheme);
+
+    return () => {
+      active = false;
+      systemTheme.removeEventListener?.('change', updateSystemTheme);
+    };
   }, []);
+
+  const toggleTheme = async () => {
+    const nextDark = !isDark;
+    const appearance = nextDark ? 'dark' : 'light';
+    if (account) {
+      try {
+        const response = await fetch('/api/account/preferences', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ appearance }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to save appearance preference.');
+      } catch (error) {
+        console.error('Unable to save the TriageX appearance preference:', error);
+        return;
+      }
+    } else {
+      try {
+        window.localStorage.setItem('triagex-theme', appearance);
+      } catch (error) {
+        console.error('Unable to save the TriageX theme preference:', error);
+      }
+    }
+    document.documentElement.dataset.appearance = appearance;
+    document.documentElement.dataset.theme = appearance;
+    window.dispatchEvent(new Event('triagex-theme-change'));
+  };
+
+  const closeMenu = () => setMobileMenuOpen(false);
 
   return (
     <>
-      <header className={`app-header ${scrolled ? 'app-header-scrolled' : ''}`}>
-        {/* Mobile Left: Home Button */}
-        <Link
-          href="/"
-          className={`mobile-home-btn ${pathname === '/' ? 'active' : ''}`}
-          aria-label="Home page"
-          aria-current={pathname === '/' ? 'page' : undefined}
-        >
-          <Home size={18} />
-          <span>Home</span>
+      <header className={`app-header site-header${pathname === '/' ? ' site-header-home' : ''}`}>
+        <Link href="/" className="brand-logo site-brand" aria-label="TriageX home">
+          <span className="site-brand-mark" aria-hidden="true">
+            <Image src="/triagex-logo.png" alt="" width={38} height={38} />
+          </span>
+          <span className="site-brand-copy">
+            <span className="brand-text">Triage<span>X</span></span>
+            <span className="site-brand-tagline">Smart Triage. Better Care.</span>
+          </span>
         </Link>
 
-        {/* Center: Brand Logo Header */}
-        <div className="header-brand-container">
-          <Link href="/" className="brand-logo">
-            <img
-              src="/logo.png"
-              alt="TriageX Logo"
-              style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '8px',
-                objectFit: 'cover',
-                boxShadow: '0 0 10px rgba(232, 32, 58, 0.28)',
-                border: '1px solid rgba(240, 68, 87, 0.45)'
-              }}
-            />
-            <div className="brand-text">
-              Triage<span>X</span>
-            </div>
-          </Link>
+        <nav className="site-nav" aria-label="Main navigation">
+          {navigation.map(({ href, label, icon: Icon }) => {
+            const active = pathname === href;
+            return (
+              <Link
+                href={href}
+                className={`site-nav-link${active ? ' active' : ''}`}
+                key={href}
+                aria-current={active ? 'page' : undefined}
+              >
+                {active && <Icon size={14} />}
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
 
-          {/* Demo Mode Badge */}
-          <span className="demo-mode-badge">
-            <ShieldAlert size={12} />
-            <span>DEMO</span>
-          </span>
+        <div className="site-header-actions">
+          <Link href="/dashboard" className="site-clinician-link">
+            <Stethoscope size={15} />
+            Clinical queue
+            {stats?.pendingCount > 0 && <span className="site-queue-count">{stats.pendingCount}</span>}
+          </Link>
+          {account?.canReviewDoctorApplications && (
+            <Link href="/admin/doctor-applications" className="site-clinician-link">
+              <ClipboardCheck size={15} />
+              Doctor review
+            </Link>
+          )}
+          <Link href={account ? '/settings' : '/login'} className="site-account-link" aria-label={account ? 'Account settings' : 'Sign in'}>
+            <UserRound size={16} />
+            <span>{account ? 'Settings' : 'Sign in'}</span>
+          </Link>
+          <button
+            type="button"
+            className="site-theme-toggle"
+            onClick={toggleTheme}
+            aria-label={`Switch to ${isDark ? 'light' : 'dark'} theme`}
+            aria-pressed={isDark}
+            title={`Switch to ${isDark ? 'light' : 'dark'} theme`}
+          >
+            {isDark ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
+          <Link href="/intake" className="site-header-cta">Start Triage <Activity size={16} /></Link>
+          <button
+            type="button"
+            className="site-menu-toggle"
+            onClick={() => setMobileMenuOpen((open) => !open)}
+            aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="site-mobile-navigation"
+          >
+            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
 
-        {/* Desktop Navigation Links */}
-        <nav className="nav-links desktop-nav-links" aria-label="Main navigation">
-          <Link
-            href="/"
-            className={`nav-link ${pathname === '/' ? 'active' : ''}`}
-            aria-current={pathname === '/' ? 'page' : undefined}
-          >
-            <Home size={15} />
-            Home
-          </Link>
-
-          <Link
-            href="/#how-it-works"
-            className="nav-link"
-          >
-            How It Works
-          </Link>
-
-          <Link
-            href="/intake"
-            className={`nav-link ${pathname === '/intake' ? 'active' : ''}`}
-            aria-current={pathname === '/intake' ? 'page' : undefined}
-          >
-            <Activity size={15} />
-            Assessment
-          </Link>
-
-          <Link
-            href="/dashboard"
-            className={`nav-link ${pathname === '/dashboard' ? 'active' : ''}`}
-            aria-current={pathname === '/dashboard' ? 'page' : undefined}
-          >
-            <Stethoscope size={15} />
-            Clinician Queue
-            {stats && stats.pendingCount > 0 && (
-              <span style={{
-                background: 'var(--blue-bg)',
-                color: 'var(--blue-400)',
-                borderRadius: '10px',
-                padding: '2px 8px',
-                fontSize: '11px',
-                fontWeight: '800'
-              }}>
-                {stats.pendingCount}
-              </span>
+        {mobileMenuOpen && (
+          <nav id="site-mobile-navigation" className="site-mobile-nav" aria-label="Mobile navigation">
+            {navigation.map(({ href, label, icon: Icon }) => (
+              <Link
+                href={href}
+                className={`site-mobile-link${pathname === href ? ' active' : ''}`}
+                key={href}
+                onClick={closeMenu}
+                aria-current={pathname === href ? 'page' : undefined}
+              >
+                <Icon size={17} /> {label}
+              </Link>
+            ))}
+            <Link href="/dashboard" className="site-mobile-link" onClick={closeMenu}>
+              <Stethoscope size={17} /> Clinical queue
+              {stats?.pendingCount > 0 && <span className="site-queue-count">{stats.pendingCount}</span>}
+            </Link>
+            {account?.canReviewDoctorApplications && (
+              <Link href="/admin/doctor-applications" className="site-mobile-link" onClick={closeMenu}>
+                <ClipboardCheck size={17} /> Doctor applications
+              </Link>
             )}
-          </Link>
-
-          <Link
-            href="/analytics"
-            className={`nav-link ${pathname === '/analytics' ? 'active' : ''}`}
-            aria-current={pathname === '/analytics' ? 'page' : undefined}
-          >
-            <BarChart3 size={15} />
-            Analytics
-          </Link>
-        </nav>
-
-        {/* Desktop CTA */}
-        <Link href="/intake" className="nav-cta-btn desktop-nav-links" aria-label="Start Patient Assessment">
-          <UserPlus size={15} />
-          Start Assessment
-        </Link>
-
-        {/* Mobile Right: Menu Toggle Button */}
-        <button
-          className="mobile-menu-btn"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          aria-label="Toggle navigation menu"
-          aria-expanded={mobileMenuOpen}
-          aria-controls="mobile-navigation"
-        >
-          {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-          <span>{mobileMenuOpen ? 'Close' : 'Menu'}</span>
-        </button>
+            <Link href={account ? '/settings' : '/login'} className="site-mobile-link" onClick={closeMenu}>
+              <UserRound size={17} /> {account ? 'Account settings' : 'Patient login'}
+            </Link>
+          </nav>
+        )}
       </header>
 
-      {/* Mobile Dropdown Navigation Menu */}
-      {mobileMenuOpen && (
-        <nav id="mobile-navigation" className="mobile-dropdown-menu" aria-label="Mobile navigation">
-          <Link
-            href="/"
-            className={`mobile-nav-item ${pathname === '/' ? 'active' : ''}`}
-            onClick={() => setMobileMenuOpen(false)}
-            aria-current={pathname === '/' ? 'page' : undefined}
-          >
-            <Home size={18} />
-            <span>Home</span>
-          </Link>
-
-          <Link
-            href="/#how-it-works"
-            className="mobile-nav-item"
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            <Activity size={18} />
-            <span>How It Works</span>
-          </Link>
-
-          <Link
-            href="/intake"
-            className={`mobile-nav-item ${pathname === '/intake' ? 'active' : ''}`}
-            onClick={() => setMobileMenuOpen(false)}
-            aria-current={pathname === '/intake' ? 'page' : undefined}
-          >
-            <UserPlus size={18} />
-            <span>Patient Assessment</span>
-          </Link>
-
-          <Link
-            href="/dashboard"
-            className={`mobile-nav-item ${pathname === '/dashboard' ? 'active' : ''}`}
-            onClick={() => setMobileMenuOpen(false)}
-            aria-current={pathname === '/dashboard' ? 'page' : undefined}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Stethoscope size={18} />
-              <span>Clinician Queue</span>
-            </div>
-            {stats && stats.pendingCount > 0 && (
-              <span style={{
-                background: 'var(--blue-bg)',
-                color: 'var(--blue-400)',
-                borderRadius: '10px',
-                padding: '2px 8px',
-                fontSize: '11px',
-                fontWeight: '800'
-              }}>
-                {stats.pendingCount} pending
-              </span>
-            )}
-          </Link>
-
-          <Link
-            href="/analytics"
-            className={`mobile-nav-item ${pathname === '/analytics' ? 'active' : ''}`}
-            onClick={() => setMobileMenuOpen(false)}
-            aria-current={pathname === '/analytics' ? 'page' : undefined}
-          >
-            <BarChart3 size={18} />
-            <span>Analytics</span>
-          </Link>
-
-          <Link
-            href="/intake"
-            className="mobile-nav-item mobile-nav-cta"
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            <UserPlus size={18} />
-            <span>Start Assessment</span>
-          </Link>
-        </nav>
-      )}
-
-      {/* Dynamic Emergency Alert Banner */}
-      {stats && stats.pendingRedCount > 0 && (
+      {pathname !== '/' && stats?.pendingRedCount > 0 && (
         <div className="emergency-ticker">
           <div className="ticker-content">
             <div className="live-dot" />
-            <AlertCircle size={18} />
+            <AlertCircle size={17} />
             <span>
-              DEMO ALERT · {stats.pendingRedCount} Level 1 (RED) {stats.pendingRedCount === 1 ? 'patient needs' : 'patients need'} immediate review.
+              CLINICIAN QUEUE · {stats.pendingRedCount} Level 1 (RED) {stats.pendingRedCount === 1 ? 'case needs' : 'cases need'} immediate review.
             </span>
           </div>
-          <Link
-            href="/dashboard?triageLevel=RED"
-            style={{
-              color: 'var(--red-400)',
-              fontWeight: 700,
-              fontSize: '13px',
-              textDecoration: 'underline'
-            }}
-          >
-            Open Emergency Queue &rarr;
+          <Link href="/dashboard?triageLevel=RED" className="site-emergency-link">
+            Open emergency queue <span aria-hidden="true">→</span>
           </Link>
         </div>
       )}

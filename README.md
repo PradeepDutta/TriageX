@@ -3,6 +3,8 @@
 **Smart Triage. Better Care.**
 
 TriageX is a Next.js healthcare triage demonstration. It collects patient-reported symptoms and available vital signs, applies configured triage rules, and presents an explainable assessment for clinician review. It is decision support, not a diagnosis or a replacement for professional medical judgment.
+## Application Screenshot
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/19622d3f-1a66-4d05-9f38-08292e520918" />
 
 ## What works in this project
 
